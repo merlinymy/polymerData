@@ -78,6 +78,7 @@ CITING_LIMIT = 400  # papers citing one likely paper that are fetched; reviews h
 CREDIT_LIMIT = 1000  # OpenAlex credits one search may spend; a free key has 10,000 a day
 FOLLOW_WORKERS = 4  # papers whose neighbours are fetched at once
 FINISH_TIME = 30  # seconds kept at the end for the descriptions
+CALL_TIME = 25  # seconds a judging call takes; none starts, nor a page whose papers it would judge, too late to finish
 
 JUDGE_SYSTEM = (
     "You help a scientist find papers to extract data from. You get what they are looking for and a "
@@ -201,7 +202,7 @@ class Search:
                 self.follow_next(web, pending)
                 # Keep the model busy with the best candidates left, while there is time for a call to finish.
                 while len([k for k, _ in pending.values() if k == "judge"]) < JUDGE_WORKERS and self.queue:
-                    if time.monotonic() > self.deadline - FINISH_TIME - 25:
+                    if time.monotonic() > self.deadline - FINISH_TIME - CALL_TIME:
                         self.queue.clear()  # no time left to judge the rest
                         break
                     if batch := self.take(JUDGE_BATCH):
@@ -273,7 +274,7 @@ class Search:
         """Fetch the neighbours of the most likely papers queued, while credits and time last."""
         running = sum(kind == "neighbours" for kind, _ in pending.values())
         while self.to_follow and running < FOLLOW_WORKERS and not self.out_of_credits:
-            if time.monotonic() > self.deadline - FINISH_TIME - 25:
+            if time.monotonic() > self.deadline - FINISH_TIME - CALL_TIME:
                 return  # its candidates would come too late to be judged
             paper = self.papers[heapq.heappop(self.to_follow)[-1]]
             cost = neighbour_cost(paper)

@@ -13,3 +13,5 @@ rapidfuzz
 fastapi
 uvicorn
 python-multipart
+pytest
+httpx  # for FastAPI's TestClient
