@@ -11,10 +11,205 @@ pipelines, and the frontend explorer.
 - [`util/`](util/) — helpers shared across the project. `claudeAPIMock.py` is how
   project code makes an LLM call; see below.
 
-How to run the frontend and the extraction server on your computer is below.
+To use the app on your own computer, follow [Getting started](#getting-started).
 [`frontend/README.md`](frontend/README.md) has more about the app itself.
 
-## Running it locally
+## Getting started
+
+This is for anyone who wants to use the app on a Mac, without typing any
+commands. The app is a set of web pages: plots and tables of the
+polymer-electrolyte dataset, plus **Extract**, which pulls the data you name out
+of a paper's PDF.
+
+Everything runs on your Mac except Claude, the AI model that reads the papers.
+The app reaches Claude through Claude Code, Anthropic's program for using
+Claude from your computer, logged in with your own Claude account. So you don't
+need an API key (a separate, pay-per-use password for Claude), and nothing is
+billed beyond your Claude plan.
+
+### What you need
+
+- **A Mac** with macOS 12 or newer. On Linux, see
+  [Setting it up by hand](#setting-it-up-by-hand). Windows isn't supported yet.
+- **A paid Claude plan: Pro, Max, Team or Enterprise.** The free plan doesn't
+  include Claude Code. Each extraction counts against your plan's usage
+  limits, the way a long chat does.
+- **About 6 GB of free disk space,** most of it for MinerU, the program that
+  turns a PDF into text and figure images before Claude reads it.
+- **An internet connection,** for the downloads and for Claude.
+
+You don't install anything beforehand. PolymerData downloads what it needs the
+first time you open it.
+
+### 1. Download it
+
+1. On https://github.com/merlinymy/polymerData, choose the green **Code**
+   button, then **Download ZIP**.
+2. Open the downloaded `polymerData-main.zip` to unzip it, if your browser
+   hasn't already. You get a folder called `polymerData-main`.
+3. If you like, move that folder somewhere you'll find it again, such as your
+   home folder. Keep everything in it together: PolymerData needs the other
+   files next to it.
+
+### 2. Open PolymerData the first time
+
+In the `polymerData-main` folder, double-click **PolymerData**.
+
+macOS stops it the first time, because it doesn't come from the App Store or
+from a developer registered with Apple:
+
+1. A message says "“PolymerData” Not Opened". Choose **Done**.
+2. Open **System Settings**, choose **Privacy & Security**, and scroll down to
+   "“PolymerData” was blocked to protect your Mac". Choose **Open Anyway**,
+   then **Open Anyway** again, and enter your Mac's password.
+
+   On macOS 14 (Sonoma) or older, Control-click PolymerData instead, choose
+   **Open**, then **Open** again.
+3. If macOS asks whether PolymerData may access files in your Downloads folder,
+   choose **Allow**. PolymerData's own files are there.
+
+macOS remembers your answer, so this happens only once. If PolymerData asks you
+to choose the folder it came in, choose `polymerData-main`: the first time,
+macOS can run it from a temporary copy that isn't next to its files.
+
+### 3. Let it set itself up, once
+
+PolymerData says it needs to set itself up first. Choose **Set Up**. A page
+opens in your browser and ticks off each step. The first time takes 10–30
+minutes, mostly downloading Claude Code, MinerU and MinerU's 2 GB of model
+files.
+
+It asks you two things along the way:
+
+1. **Where to keep your data.** **Use This Folder** keeps it in a folder called
+   `PolymerData Results` in your home folder. **Choose Another…** lets you pick
+   one. More in [Where your data is kept](#where-your-data-is-kept).
+2. **Your Claude login,** if Claude Code isn't logged in on this Mac yet. Choose
+   **Log In**, and your browser opens a Claude page. Log in there with your
+   Claude account, then go back to the setup page.
+
+When it's done, the page says "PolymerData is set up" and the app opens in a
+new browser tab. If the page says "Setup stopped" instead, it says why. Fix
+that, then double-click PolymerData again: it carries on from where it stopped.
+
+### 4. Get data out of a paper
+
+1. Choose **Extract** in the menu.
+2. **Choose PDF** and pick the paper.
+3. Under **Features**, type the features you want, meaning the properties you
+   want from the paper, separated by commas. For example:
+   `Temperature (°C), Conductivity (S/cm)`. Put a unit in a feature's name to
+   get its numbers in that unit. Without one, they come in whatever unit the
+   paper uses.
+4. Choose **Extract data**.
+
+The page shows each step as it works. A paper takes about 5 minutes the first
+time, most of it MinerU reading the PDF, and 30 seconds to 2 minutes after
+that. The results come grouped by sample (each material the paper tests), one
+row per data point. A sample has several rows when the paper gives a feature at
+several conditions, such as its conductivity at several temperatures. An empty
+cell means the paper doesn't give that value. **Download CSV** saves the results
+as a spreadsheet file.
+
+The other pages (Explore, Temperature, Correlations, Data, Features) show the
+dataset and need nothing else. **Discover**, which finds papers likely to
+report the data you want, works better with a free OpenAlex key: see
+[Finding papers](#finding-papers-extractiondiscoverpy-issue-7).
+
+### Each time you use it
+
+Double-click **PolymerData**. A few seconds later the app opens in your browser
+at http://localhost:5173. PolymerData has no window of its own: it runs in the
+background, and it keeps running after you close the browser tab, until you
+stop it.
+
+To stop it, double-click PolymerData again and choose **Stop PolymerData**.
+**Open** brings the app's page back instead. Restarting or shutting down the
+Mac stops it too.
+
+### What you'll notice
+
+- **The app's address is `http://localhost:5173`.** Nothing answers at
+  `http://127.0.0.1:5173`, even though both mean your own Mac.
+- **If PolymerData isn't running,** Extract says "Couldn't reach the
+  extraction server". The other pages don't notice. Double-click PolymerData
+  to start it.
+- **Results stay after a refresh.** Once an extraction starts, the page's
+  address becomes `/extract?job=<id>`. Refreshing it, opening it again later,
+  or coming back through the menu shows that extraction, running or finished.
+  **New extraction** takes the address back to plain `/extract`. The address
+  only works on the Mac that ran the extraction.
+- **Download CSV** saves the results as `<PDF name>-extracted.csv`: a
+  `sample` column, then one column per feature, one row per data point.
+- **Extractions run one at a time.** One you start while another is running
+  waits for it, and the page says so.
+- **Stopping PolymerData loses any extraction still running;** finished ones
+  are saved. When you start it again, the page says "The server lost this
+  extraction". **Try again** starts it over, unless the page was reloaded
+  since you chose the PDF. A reloaded page no longer has the file, so wherever
+  starting over is the fix (this, or an extraction that failed), **Try again**
+  isn't offered: choose the PDF again under **Change file or features**.
+
+### Where your data is kept
+
+Your data folder is the one you chose during setup: `PolymerData Results` in
+your home folder, unless you chose another. It holds:
+
+- `parsed/`: one folder per paper, with its text as MinerU read it
+  (`content.md`) and its figures as images (`figures/`). The same PDF uploaded
+  again, under any file name, reuses this instead of being read again.
+- `extractions/`: one file per extraction, `<id>.json`, holding the results the
+  page showed. `<id>` is the end of the page's address, `/extract?job=<id>`.
+
+To move your data, stop PolymerData and move the folder. Then tell PolymerData
+where it went. In `polymerData-main`, open the `extraction` folder and press
+Cmd+Shift+. (period) to show hidden files. Open `.env` with TextEdit and change
+the `DATA_DIR=` line to the folder's new location, for example
+`DATA_DIR=/Users/yourname/Documents/PolymerData Results`. If PolymerData
+can't find your earlier data, the app starts empty: earlier extractions'
+addresses say "The server lost this extraction", and papers are read again.
+
+Two things are kept outside the data folder:
+- **MinerU keeps its own copy** of every paper it has read, in the hidden
+  `.mineru` folder in your home folder. That's why a paper it has seen before
+  takes seconds to read, even with an empty data folder.
+- **PolymerData's logs,** records of what it did, are in `extraction/logs/`
+  and in the hidden `.runtime` folder, both inside `polymerData-main`.
+
+### Updating to a newer version
+
+1. Stop PolymerData: double-click it and choose **Stop PolymerData**.
+2. Download the ZIP again and unzip it, as in [step 1](#1-download-it).
+3. Double-click the new folder's PolymerData. macOS asks you to allow it again,
+   as in [step 2](#2-open-polymerdata-the-first-time).
+4. It sets itself up again, faster this time since most things are already
+   installed. When it asks where to keep your data, choose the same folder as
+   before, so the new version finds your earlier results.
+
+Then you can delete the old folder.
+
+### If something goes wrong
+
+- **Extract says "Couldn't reach the extraction server".** PolymerData isn't
+  running, or was stopped. Double-click PolymerData.
+- **PolymerData says something is already using its web addresses.** It's
+  running from another copy of its folder, such as an older download. Double-
+  click that copy, choose **Stop PolymerData**, then open this one again.
+- **An extraction fails with a message from Claude,** such as a usage limit.
+  The page shows Claude's message. A usage limit resets after a few hours, so
+  try again then.
+- **PolymerData says it didn't start.** The end of `server.log` and `web.log`,
+  in the hidden `.runtime` folder inside `polymerData-main`, says why.
+- **Anything else:** `extraction/logs/extraction.log` records what the app was
+  doing when it went wrong. Include its last lines when you
+  [open an issue](https://github.com/merlinymy/polymerData/issues).
+
+## Setting it up by hand
+
+For developers, for Linux, and for running a step yourself when setup stops on
+it. From a terminal in the repo root, `./setup.sh` does all of the steps below
+(it's what PolymerData runs on a Mac), and `./start.sh` starts both programs and
+opens the page, until Ctrl+C. Or run the steps one by one:
 
 The frontend and the extraction server both run on your own computer, each in
 its own terminal. Every page of the frontend except **Extract** works without
@@ -26,10 +221,10 @@ Run each command block below from the repo root, the folder this README is in.
 ### Once: install what they need
 
 1. **Node.js**, the LTS (long-term support) version, from https://nodejs.org.
-   The frontend and Claude Code both need it.
+   The frontend needs it.
 2. **Claude Code, logged in.** The extraction server uses it to have Claude read
-   the paper. Run `npm install -g @anthropic-ai/claude-code`, then run `claude`
-   once and log in. [Making an LLM call](#making-an-llm-call-utilclaudeapimockpy)
+   the paper. Run `curl -fsSL https://claude.ai/install.sh | bash`, then run
+   `claude` once and log in. [Making an LLM call](#making-an-llm-call-utilclaudeapimockpy)
    explains why it goes through Claude Code instead of an API key.
 3. **MinerU**, the tool that turns a PDF into text and figure images before
    Claude reads it. It runs on your computer and needs about 2 GB of model
@@ -75,6 +270,9 @@ Run each command block below from the repo root, the folder this README is in.
    cd frontend
    npm install
    ```
+6. **Where to keep the data,** if not in `extraction/output`: copy
+   `extraction/.env.example` to `extraction/.env` and set `DATA_DIR=` in it.
+   [Where your data is kept](#where-your-data-is-kept) explains the folder.
 
 ### Each time: start both
 
@@ -95,29 +293,14 @@ npm run dev                  # prints http://localhost:5173
 Then open http://localhost:5173 and choose **Extract** in the menu. Ctrl+C in a
 terminal stops what's running there.
 
-**What you'll notice:**
-- **Open `http://localhost:5173`, not `http://127.0.0.1:5173`.** Nothing
-  answers at the second address, because the frontend's development server
-  only listens on `localhost`.
-- **If the extraction server isn't running,** Extract says "Couldn't reach the
-  extraction server". The other pages don't notice.
-- **Results stay after a refresh.** Once an extraction starts, the page's
-  address becomes `/extract?job=<id>`. Refreshing it, opening it again later,
-  or coming back through the menu shows that extraction, running or finished.
-  **New extraction** takes the address back to plain `/extract`. The address
-  only works on a computer that can reach the same extraction server.
-- **Download CSV** on the results saves them as `<PDF name>-extracted.csv`: a
-  `sample` column, then one column per feature, one row per data point, and an
-  empty cell where the paper doesn't give a value.
-- **Stopping the extraction server loses any extraction still running;**
-  finished ones are saved. When it starts again, the page says "The server
-  lost this extraction". **Try again** starts it over, unless the page was
-  reloaded since you chose the PDF. A reloaded page no longer has the file, so
-  wherever starting over is the fix (this, or an extraction that failed),
-  **Try again** isn't offered: choose the PDF again under **Change file or
-  features**.
-- **MinerU's own server keeps running in the background** after you close both
-  terminals. `mineru server stop` stops it.
+`./start.sh`, from the repo root, does both in one terminal and opens the page.
+
+What you'll see on the page is under [What you'll notice](#what-youll-notice).
+When you start them by hand:
+- **Nothing answers at `http://127.0.0.1:5173`,** because the frontend's
+  development server only listens on `localhost`.
+- **Start the extraction server from a terminal opened after MinerU's install**
+  (step 3), or it can't run `mineru`.
 - **How long an extraction takes,** and what the server's answers look like, is
   under [Extraction API](#extraction-api-extractionapipy) below.
 
@@ -129,7 +312,7 @@ machine with your Claude Code login, so calls count against your Claude Code
 plan's usage limits and nothing is billed to an API key.
 
 **Setup:**
-1. Install Claude Code: `npm install -g @anthropic-ai/claude-code`.
+1. Install Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`.
 2. Run `claude` once and log in.
 
 `ask_llm()` needs only the `claude` command on your PATH and the Python standard
@@ -198,7 +381,8 @@ A small web server that lets the frontend use `extract_features.py`. The page
 sends a PDF and the feature names, and gets the data back grouped by sample.
 
 **Start it** with `.venv/bin/python api.py` from `extraction/`, after the
-one-time setup in [Running it locally](#running-it-locally).
+one-time setup in [Getting started](#getting-started) or
+[Setting it up by hand](#setting-it-up-by-hand).
 
 - It listens on http://127.0.0.1:8000, which only this computer can reach. To
   let other computers on the network reach it, run
@@ -285,10 +469,11 @@ That paper's answer, shortened (it gave 6 samples with 7 temperatures each):
 - **Jobs run one at a time, in the order they came in.** `running` also covers
   waiting for earlier jobs, so a job can stay `running` longer than the times
   above.
-- **Every finished job is saved** to `extraction/output/extractions/<job id>.json`,
-  holding the same answer `GET /extract/<job id>` gives, so its id keeps
-  working after a restart. Failed jobs are saved too, with their reason. The
-  files stay on the computer running the server: `output/` isn't in git.
+- **Every finished job is saved** to `extractions/<job id>.json` in the
+  [data folder](#where-your-data-is-kept), holding the same answer
+  `GET /extract/<job id>` gives, so its id keeps working after a restart.
+  Failed jobs are saved too, with their reason. The files stay on the computer
+  running the server: the default data folder, `extraction/output/`, isn't in git.
 - **A job still running when the server stops is lost.** Its id answers `404`
   after the restart, and so does an id the server never made.
 - **Commas separate the feature names,** so a name can't contain a comma.
