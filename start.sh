@@ -28,15 +28,16 @@ stop() {
 trap 'stop; exit 130' INT TERM
 trap stop EXIT
 
-# Open the page once the frontend answers.
+# Open the page once both answer. Stop waiting if either one stops, such as the
+# extraction server when its port is already in use.
 for _ in $(seq 30); do
-  if curl -s -o /dev/null http://localhost:5173; then
+  kill -0 "$api" 2>/dev/null && kill -0 "$web" 2>/dev/null || break
+  if curl -s -o /dev/null http://localhost:5173 && curl -s -o /dev/null http://127.0.0.1:8000/docs; then
     if command -v open >/dev/null; then open http://localhost:5173
     elif command -v xdg-open >/dev/null; then xdg-open http://localhost:5173 >/dev/null 2>&1
     fi
     break
   fi
-  kill -0 "$web" 2>/dev/null || break
   sleep 1
 done
 
