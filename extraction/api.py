@@ -16,7 +16,7 @@ A PDF parsed before takes about 1.5 minutes, a new one about 5, since MinerU
 parses it first. Jobs run one at a time, in the order they came in, so
 "running" includes waiting for earlier jobs -- the "queued" step, whose
 description says how many are ahead. A finished job is also saved to
-output/extractions/<id>.json, so its id keeps answering after a restart. A job
+<DATA_DIR>/extractions/<id>.json, so its id keeps answering after a restart. A job
 still running when the server stops is lost: its id answers 404.
 
 What the server does goes to stdout and logs/extraction.log, each line tagged
@@ -51,15 +51,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import job_progress
 from discover import discover
-from extract_features import HERE, extract_features
+from extract_features import DATA_DIR, HERE, extract_features
 from job_progress import QUEUED
 from log_setup import LOG_FILE, configure_logging, job_context, resolve_level, set_step
 
-os.chdir(HERE)  # the parse step's paths (settings.yaml, output/parsed/) are relative to extraction/
+os.chdir(HERE)  # the parse step's settings.yaml path is relative to extraction/
 
 log = logging.getLogger("extraction.api")
 
-RESULTS = HERE / "output" / "extractions"  # <job id>.json for each finished job
+RESULTS = DATA_DIR / "extractions"  # <job id>.json for each finished job
 
 
 @asynccontextmanager

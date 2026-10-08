@@ -28,7 +28,7 @@ describe("describeExtractError", () => {
     const { title, message } = describeExtractError(error("network"), "submit", API);
     expect(title).toBe("Couldn't reach the extraction server");
     expect(message).toContain(API);
-    expect(message).toContain("python api.py");
+    expect(message).toContain("double-click PolymerData");
     expect(message).toContain("localhost");
   });
 

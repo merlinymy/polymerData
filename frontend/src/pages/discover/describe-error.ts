@@ -16,7 +16,7 @@ export function describeDiscoverError(
           }
         : {
             title: "Couldn't reach the server",
-            message: `Nothing answered at ${apiUrl}. Check that the server is running (python api.py in extraction/) and that this page is open at a localhost address.`,
+            message: `Nothing answered at ${apiUrl}. Check that PolymerData is running (double-click PolymerData to start it, or run ./start.sh), and that this page is open at a localhost address.`,
           };
     case "bad-response":
       return {
