@@ -47,7 +47,7 @@ export function describeExtractError(
           }
         : {
             title: "Couldn't reach the extraction server",
-            message: `Nothing answered at ${apiUrl}. Check that the server is running (python api.py in extraction/) and that this page is open at a localhost address — the server only answers pages served from this computer.`,
+            message: `Nothing answered at ${apiUrl}. Check that PolymerData is running (double-click PolymerData to start it, or run ./start.sh), and that this page is open at a localhost address — the server only answers pages served from this computer.`,
           };
     case "bad-response":
       return {
