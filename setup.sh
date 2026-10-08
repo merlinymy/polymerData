@@ -47,15 +47,20 @@ end run
 EOF
 }
 # Asks where to keep the data, suggesting the folder it's given; prints the answer.
-# Canceling returns nonzero; the caller then uses the suggested folder.
+# Cancel in the folder chooser goes back to the question; any other failure returns nonzero.
 choose_data_dir() {
   osascript - "$1" <<'EOF'
 on run argv
   set suggested to item 1 of argv
-  activate
-  set reply to display dialog "PolymerData keeps the papers it reads, and the data it gets out of them, in one folder:" & return & return & suggested & return & return & "Use this folder, or choose another one?" buttons {"Choose Another…", "Use This Folder"} default button 2 with title "PolymerData"
-  if button returned of reply is "Use This Folder" then return suggested
-  return POSIX path of (choose folder with prompt "Choose the folder for PolymerData's data:")
+  repeat
+    activate
+    set reply to display dialog "PolymerData keeps the papers it reads, and the data it gets out of them, in one folder:" & return & return & suggested & return & return & "Use this folder, or choose another one?" buttons {"Choose Another…", "Use This Folder"} default button 2 with title "PolymerData"
+    if button returned of reply is "Use This Folder" then return suggested
+    try
+      return POSIX path of (choose folder with prompt "Choose the folder for PolymerData's data:")
+    on error number -128 -- Cancel in the folder chooser: ask again
+    end try
+  end repeat
 end run
 EOF
 }
@@ -99,7 +104,8 @@ data_dir="$(sed -n 's/^DATA_DIR=//p' "$ENV_FILE" | tail -n 1)"
 if [ -z "$data_dir" ]; then
   if [ -n "$GUI" ]; then
     suggested="$HOME/PolymerData Results"
-    data_dir="$(choose_data_dir "$suggested")" || data_dir="$suggested"
+    data_dir="$(choose_data_dir "$suggested")" ||
+      fail "Couldn't ask where to keep your data. To try again, $AGAIN."
     data_dir="${data_dir%/}"
   else
     echo "Parsed papers and extraction results go in one folder."
@@ -109,13 +115,18 @@ if [ -z "$data_dir" ]; then
     fi
     data_dir="${answer:-extraction/output}"
   fi
-  # Replace the DATA_DIR line, or add one if the file has none.
-  awk -v line="DATA_DIR=$data_dir" '/^DATA_DIR=/ { print line; done = 1; next } { print }
-    END { if (!done) print line }' "$ENV_FILE" >"$ENV_FILE.tmp"
+  # In single quotes, with \ and ' escaped, so python-dotenv reads back this exact
+  # path: unquoted, a " #" in a folder's name would start a comment.
+  quoted="'$(printf '%s' "$data_dir" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g")'"
+  # Replace the DATA_DIR line, or add one if the file has none. The line goes
+  # through ENVIRON rather than awk -v, which would undo the escaping.
+  DATA_DIR_LINE="DATA_DIR=$quoted" awk '/^DATA_DIR=/ { print ENVIRON["DATA_DIR_LINE"]; done = 1; next }
+    { print } END { if (!done) print ENVIRON["DATA_DIR_LINE"] }' "$ENV_FILE" >"$ENV_FILE.tmp"
   mv "$ENV_FILE.tmp" "$ENV_FILE"
+  mkdir -p "${data_dir/#\~/$HOME}"
 fi
-mkdir -p "${data_dir/#\~/$HOME}"
-echo "Data folder: $data_dir (to change it, edit DATA_DIR in $ENV_FILE)"
+shown="${data_dir#\'}"
+echo "Data folder: ${shown%\'} (to change it, edit DATA_DIR in $ENV_FILE)"
 
 step "Checking uv, the tool that installs MinerU and Python"
 if ! command -v uv >/dev/null; then
