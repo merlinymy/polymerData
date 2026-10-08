@@ -5,3 +5,6 @@ __pycache__/
 *.pyc
 *.tsbuildinfo
 .DS_Store
+
+# PolymerData.app's own files: Node.js if setup.sh downloaded it, process ids, logs, the setup page
+.runtime/

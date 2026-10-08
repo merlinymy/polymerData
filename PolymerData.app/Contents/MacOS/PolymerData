@@ -1,0 +1,262 @@
+#!/bin/bash
+# PolymerData.app: what you double-click to use PolymerData on a Mac.
+#
+# The first time, and after an update, it sets everything up: setup.sh runs in
+# the background, its questions come as dialogs, and a page in the browser
+# shows how far it has got. After that it starts the app in the background
+# (the extraction server and the frontend, as start.sh does) and opens it in
+# the browser. Double-clicked while the app runs, it offers to open or stop it.
+#
+# Its own files (process ids, logs, the progress page) go in .runtime/.
+
+set -uo pipefail # not -e: a dialog's Cancel is a non-zero exit, and that's an answer
+
+FRONTEND_URL=http://localhost:5173
+SERVER_URL=http://127.0.0.1:8000
+
+message() { # message TEXT: a dialog with an OK button
+  osascript - "$1" >/dev/null <<'EOF'
+on run argv
+  activate
+  display dialog (item 1 of argv) buttons {"OK"} default button 1 with title "PolymerData"
+end run
+EOF
+}
+ask() { # ask TEXT BUTTON DEFAULT-BUTTON: prints the button chosen
+  osascript - "$1" "$2" "$3" <<'EOF'
+on run argv
+  activate
+  button returned of (display dialog (item 1 of argv) buttons {item 2 of argv, item 3 of argv} default button 2 with title "PolymerData")
+end run
+EOF
+}
+original_path() { # the app's own location, when macOS runs it from a temporary copy
+  osascript -l JavaScript - "$1" <<'EOF'
+function run(argv) {
+  ObjC.import("Security");
+  ObjC.bindFunction("SecTranslocateCreateOriginalPathForURL", ["id", ["id", "void *"]]);
+  return $.SecTranslocateCreateOriginalPathForURL($.NSURL.fileURLWithPath(argv[0]), null).path.js;
+}
+EOF
+}
+choose_project_folder() {
+  osascript <<'EOF'
+activate
+POSIX path of (choose folder with prompt "Choose the folder PolymerData came in (it has PolymerData, README.md and setup.sh in it):")
+EOF
+}
+
+# The folder this app is in. Opened from an unzipped download, macOS first runs
+# the app from a temporary copy somewhere else ("App Translocation"), where
+# that folder isn't next to it: then ask macOS where the original is, or the user.
+if [ "${1:-}" = --setup ]; then
+  ROOT="$2"
+else
+  APP="$(cd "$(dirname "$0")/../.." && pwd -P)"
+  ROOT="$(dirname "$APP")"
+  if [ ! -f "$ROOT/setup.sh" ]; then
+    ROOT="$(dirname "$(original_path "$APP" 2>/dev/null)")"
+    if [ ! -f "$ROOT/setup.sh" ]; then
+      ROOT="$(choose_project_folder)" || exit 0
+      ROOT="${ROOT%/}"
+      if [ ! -f "$ROOT/setup.sh" ]; then
+        message "That folder doesn't have PolymerData's files in it. Double-click PolymerData again and choose the folder it came in."
+        exit 1
+      fi
+    fi
+    # Mark the folder as already opened, so macOS runs the app from it next time.
+    xattr -r -d com.apple.quarantine "$ROOT" 2>/dev/null
+  fi
+fi
+
+RUN="$ROOT/.runtime"
+mkdir -p "$RUN"
+# Apps opened from the Finder get a short PATH: add where setup.sh puts Node.js,
+# where Claude Code, uv and MinerU install, and Homebrew's folders.
+export PATH="$RUN/node/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+running() { # running NAME PATTERN: the process in .runtime/NAME.pid is still the one we started
+  local pid
+  pid="$(cat "$RUN/$1.pid" 2>/dev/null)" || return 1
+  ps -p "$pid" -o command= 2>/dev/null | grep -q -- "$2"
+}
+answers() { curl -s -o /dev/null --max-time 2 "$1"; }
+
+# What setup depends on. When one of these changes (an update), setup runs again.
+fingerprint() { cat "$ROOT/setup.sh" "$ROOT/extraction/requirements.txt" "$ROOT/frontend/package-lock.json" | cksum; }
+set_up() {
+  [ "$(cat "$RUN/setup-done" 2>/dev/null)" = "$(fingerprint)" ] &&
+    [ -x "$ROOT/extraction/.venv/bin/python" ] && [ -d "$ROOT/frontend/node_modules" ]
+}
+
+stop_app() {
+  running api api.py && kill "$(cat "$RUN/api.pid")"
+  running web vite && kill "$(cat "$RUN/web.pid")"
+  rm -f "$RUN/api.pid" "$RUN/web.pid"
+}
+
+start_app() {
+  if answers "$FRONTEND_URL" || answers "$SERVER_URL/docs"; then
+    message "Something on this Mac is already using PolymerData's web addresses, most likely PolymerData opened from another copy of its folder.
+
+Double-click that copy of PolymerData and choose Stop PolymerData, then double-click this one again."
+    return 1
+  fi
+  (cd "$ROOT/extraction" && exec nohup .venv/bin/python api.py >"$RUN/server.log" 2>&1) &
+  echo $! >"$RUN/api.pid"
+  (cd "$ROOT/frontend" && exec nohup node_modules/.bin/vite --strictPort >"$RUN/web.log" 2>&1) &
+  echo $! >"$RUN/web.pid"
+  for _ in $(seq 60); do
+    if answers "$FRONTEND_URL" && answers "$SERVER_URL/docs"; then
+      open "$FRONTEND_URL"
+      return 0
+    fi
+    running api api.py && running web vite || break
+    sleep 1
+  done
+  stop_app
+  message "PolymerData didn't start. What went wrong is at the end of server.log and web.log, in the .runtime folder inside the PolymerData folder."
+  return 1
+}
+
+html() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+
+render() { # render running|done|failed: the setup progress page, .runtime/setup.html
+  local state=$1 heading note reload="" steps="" line n i=0 class log minutes
+  minutes=$((($(date +%s) - $(cat "$RUN/setup-started")) / 60))
+  case $state in
+    running)
+      heading="Setting up PolymerData"
+      note="This takes 10–30 minutes the first time, mostly downloading. This page updates by itself. If a window asks you something, answer it. Running for $minutes min."
+      reload='<script>setTimeout(() => location.reload(), 2000)</script>'
+      ;;
+    done)
+      heading="PolymerData is set up"
+      note="It opens in a new tab. From now on, double-click PolymerData to start it."
+      ;;
+    failed)
+      heading="Setup stopped"
+      # setup.sh's reason says what to do next.
+      note="$(html <"$RUN/setup-error" 2>/dev/null)" ||
+        note="The messages below say why. Once that's fixed, double-click PolymerData again: it carries on from where it stopped."
+      ;;
+  esac
+  n=$(($(wc -l <"$RUN/setup-steps")))
+  while IFS= read -r line; do
+    i=$((i + 1))
+    class=done
+    if [ "$i" -eq "$n" ] && [ "$state" != done ]; then class=$state; fi
+    steps+="<li class=\"$class\">$(printf '%s' "$line" | html)</li>"
+  done <"$RUN/setup-steps"
+  # The end of setup.sh's output, without progress-bar redraws and terminal colours.
+  log="$(tail -c 4000 "$RUN/setup.log" | tr '\r' '\n' | sed -e $'s/\x1b\\[[0-9;?]*[A-Za-z]//g' |
+    grep -v '^[[:space:]]*$' | tail -n 10 | html)"
+  cat >"$RUN/setup.html.tmp" <<EOF
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$heading</title>
+<style>
+  :root { --bg: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --ok: #1a7f37; --bad: #cf222e; --accent: #0071e3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1d1d1f; --fg: #f5f5f7; --muted: #a1a1a6; --line: #424245; --ok: #3fb950; --bad: #ff6b6b; --accent: #2997ff; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 48px auto; padding: 0 16px; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  p { margin: 0 0 24px; color: var(--muted); }
+  ol { list-style: none; padding: 0; margin: 0 0 24px; }
+  li { padding: 8px 0 8px 32px; position: relative; border-bottom: 1px solid var(--line); }
+  li::before { position: absolute; left: 4px; font-weight: 700; }
+  li.done::before { content: "✓"; color: var(--ok); }
+  li.failed::before { content: "✕"; color: var(--bad); }
+  li.failed { color: var(--bad); }
+  li.running::before { content: ""; width: 12px; height: 12px; top: 13px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 8px; }
+  pre { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--muted); white-space: pre-wrap; word-break: break-word; }
+</style>
+$reload
+</head>
+<body>
+<main>
+<h1>$heading</h1>
+<p>$note</p>
+<ol>$steps</ol>
+<h2>Latest messages</h2>
+<pre>$log</pre>
+</main>
+</body>
+</html>
+EOF
+  mv "$RUN/setup.html.tmp" "$RUN/setup.html"
+}
+
+run_setup() { # runs in the background, started by the double-click below
+  echo $$ >"$RUN/setup.pid"
+  rm -f "$RUN/setup-error"
+  : >"$RUN/setup-steps"
+  date +%s >"$RUN/setup-started"
+  GUI=1 "$ROOT/setup.sh" >"$RUN/setup.log" 2>&1 &
+  local setup=$!
+  render running
+  while kill -0 "$setup" 2>/dev/null; do
+    sleep 2
+    render running
+  done
+  wait "$setup"
+  local status=$?
+  rm -f "$RUN/setup.pid"
+  if [ "$status" -ne 0 ]; then
+    render failed
+    message "Setup stopped. The setup page in your browser says why."
+    return 1
+  fi
+  fingerprint >"$RUN/setup-done"
+  render done
+  start_app
+}
+
+if [ "${1:-}" = --setup ]; then
+  run_setup
+  exit
+fi
+
+if running setup --setup; then # still setting up: show its page again
+  open "$RUN/setup.html"
+  exit 0
+fi
+
+if running api api.py && running web vite; then
+  choice="$(ask "PolymerData is running.
+
+Stopping it loses any extraction that hasn't finished." "Stop PolymerData" "Open")" || exit 0
+  if [ "$choice" = "Stop PolymerData" ]; then
+    stop_app
+    # MinerU's own background server too; the extraction server starts it again when it needs it.
+    mineru server stop >/dev/null 2>&1
+  else
+    open "$FRONTEND_URL"
+  fi
+  exit 0
+fi
+stop_app # if one of the two stopped on its own, stop the other too
+
+if ! set_up; then
+  choice="$(ask "PolymerData needs to set itself up first. It downloads about 4 GB, and takes 10–30 minutes; a page in your browser shows how it's going.
+
+It asks you two things: where to keep your data, and to log in to Claude." "Cancel" "Set Up")" || exit 0
+  [ "$choice" = "Set Up" ] || exit 0
+  rm -f "$RUN/setup.html"
+  nohup "$0" --setup "$ROOT" >/dev/null 2>&1 &
+  for _ in $(seq 20); do
+    [ -f "$RUN/setup.html" ] && break
+    sleep 0.5
+  done
+  open "$RUN/setup.html"
+  exit 0
+fi
+
+start_app
