@@ -163,11 +163,14 @@ your home folder, unless you chose another. It holds:
 
 To move your data, stop PolymerData and move the folder. Then tell PolymerData
 where it went. In `polymerData-main`, open the `extraction` folder and press
-Cmd+Shift+. (period) to show hidden files. Open `.env` with TextEdit and change
-the `DATA_DIR=` line to the folder's new location, for example
-`DATA_DIR=/Users/yourname/Documents/PolymerData Results`. If PolymerData
-can't find your earlier data, the app starts empty: earlier extractions'
-addresses say "The server lost this extraction", and papers are read again.
+Cmd+Shift+. (period) to show hidden files. Open `.env` with TextEdit, find the
+`DATA_DIR=` line, and change the location between its single quotes to the
+folder's new location, for example
+`DATA_DIR='/Users/yourname/Documents/PolymerData Results'`. Leave the quotes as
+they are: TextEdit can turn quotes you type into curly ones, which PolymerData
+doesn't read as quotes. If PolymerData can't find your earlier data, the app
+starts empty: earlier extractions' addresses say "The server lost this
+extraction", and papers are read again.
 
 Two things are kept outside the data folder:
 - **MinerU keeps its own copy** of every paper it has read, in the hidden
