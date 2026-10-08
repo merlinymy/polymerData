@@ -131,6 +131,10 @@ function ProgressBar({ progress }: { progress?: JobProgress }) {
   );
 }
 
+/**
+ * Activity icon that spins when reduced motion isn't requested. Hidden from
+ * assistive technology by default; SVG props can override that, and className adds styling.
+ */
 export function Spinner({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg

@@ -26,10 +26,12 @@ export PATH="$RUNTIME/node/bin:$HOME/.local/bin:$PATH"
 
 if [ -n "$GUI" ]; then AGAIN="double-click PolymerData again"; else AGAIN="run ./setup.sh again"; fi
 
+# Print the step name ($1); with GUI set, append it to .runtime/setup-steps.
 step() {
   printf '\n==> %s\n' "$1"
   if [ -n "$GUI" ]; then echo "$1" >>"$RUNTIME/setup-steps"; fi
 }
+# Print the reason ($1) to stderr and exit 1; with GUI set, save it to .runtime/setup-error.
 fail() {
   printf '\n%s\n' "$1" >&2
   if [ -n "$GUI" ]; then echo "$1" >"$RUNTIME/setup-error"; fi
@@ -45,6 +47,7 @@ end run
 EOF
 }
 # Asks where to keep the data, suggesting the folder it's given; prints the answer.
+# Canceling returns nonzero; the caller then uses the suggested folder.
 choose_data_dir() {
   osascript - "$1" <<'EOF'
 on run argv
@@ -57,7 +60,7 @@ end run
 EOF
 }
 
-# Any other command that fails, such as a download that broke off.
+# ERR trap handler: report a failed step through fail() and exit 1.
 on_error() { fail "That step didn't finish. Check the internet connection, then $AGAIN. If it stops at the same step again, the latest messages say why."; }
 trap on_error ERR
 
@@ -67,7 +70,8 @@ case "$(uname -s)" in
 esac
 
 step "Checking Node.js"
-# The frontend's build tool, Vite, needs Node.js 20.19+ or 22.12+.
+# Return success for Node.js 20.19+, 22.12+, or a major version above 22.
+# A missing Node.js or any other version returns nonzero (including 21.x).
 node_ok() {
   command -v node >/dev/null &&
     node -e 'const [a, b] = process.versions.node.split(".").map(Number);
@@ -126,6 +130,7 @@ if ! command -v claude >/dev/null; then
 fi
 claude --version
 # Without an API key in the environment, as the extraction server calls it.
+# Return success only if Claude's auth status reports loggedIn: true.
 logged_in() { env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN claude auth status --json 2>/dev/null | grep -q '"loggedIn": *true'; }
 if ! logged_in; then
   if [ -n "$GUI" ]; then

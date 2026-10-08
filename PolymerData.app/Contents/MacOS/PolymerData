@@ -23,6 +23,7 @@ end run
 EOF
 }
 ask() { # ask TEXT BUTTON DEFAULT-BUTTON: prints the button chosen
+  # Canceling the dialog or an osascript error returns nonzero.
   osascript - "$1" "$2" "$3" <<'EOF'
 on run argv
   activate
@@ -30,7 +31,7 @@ on run argv
 end run
 EOF
 }
-original_path() { # the app's own location, when macOS runs it from a temporary copy
+original_path() { # original_path APP: print the original path of a translocated app
   osascript -l JavaScript - "$1" <<'EOF'
 function run(argv) {
   ObjC.import("Security");
@@ -39,6 +40,7 @@ function run(argv) {
 }
 EOF
 }
+# Ask for the project folder and print its POSIX path; canceling returns nonzero.
 choose_project_folder() {
   osascript <<'EOF'
 activate
@@ -75,26 +77,32 @@ mkdir -p "$RUN"
 # where Claude Code, uv and MinerU install, and Homebrew's folders.
 export PATH="$RUN/node/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-running() { # running NAME PATTERN: the process in .runtime/NAME.pid is still the one we started
+running() { # running NAME PATTERN: success if .runtime/NAME.pid's command matches the grep pattern
   local pid
   pid="$(cat "$RUN/$1.pid" 2>/dev/null)" || return 1
   ps -p "$pid" -o command= 2>/dev/null | grep -q -- "$2"
 }
+# Probe URL ($1) with a two-second timeout; HTTP error statuses also count as success.
 answers() { curl -s -o /dev/null --max-time 2 "$1"; }
 
 # What setup depends on. When one of these changes (an update), setup runs again.
 fingerprint() { cat "$ROOT/setup.sh" "$ROOT/extraction/requirements.txt" "$ROOT/frontend/package-lock.json" | cksum; }
+# Return success when the setup fingerprint matches, Python is executable, and node_modules exists.
 set_up() {
   [ "$(cat "$RUN/setup-done" 2>/dev/null)" = "$(fingerprint)" ] &&
     [ -x "$ROOT/extraction/.venv/bin/python" ] && [ -d "$ROOT/frontend/node_modules" ]
 }
 
+# Send SIGTERM to matching recorded API and Vite processes, then remove both PID files.
 stop_app() {
   running api api.py && kill "$(cat "$RUN/api.pid")"
   running web vite && kill "$(cat "$RUN/web.pid")"
   rm -f "$RUN/api.pid" "$RUN/web.pid"
 }
 
+# Start the API and frontend in the background, saving PIDs and logs in .runtime/.
+# Open the frontend and return 0 when both URLs answer. Return 1 if either URL
+# already answers, or if startup fails; failed startup stops the recorded processes.
 start_app() {
   if answers "$FRONTEND_URL" || answers "$SERVER_URL/docs"; then
     message "Something on this Mac is already using PolymerData's web addresses, most likely PolymerData opened from another copy of its folder.
@@ -119,6 +127,7 @@ Double-click that copy of PolymerData and choose Stop PolymerData, then double-c
   return 1
 }
 
+# Escape &, <, and > from stdin to stdout for HTML text content.
 html() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
 render() { # render running|done|failed: the setup progress page, .runtime/setup.html
@@ -194,6 +203,8 @@ EOF
   mv "$RUN/setup.html.tmp" "$RUN/setup.html"
 }
 
+# Run setup with dialogs and refresh .runtime/setup.html while it runs.
+# Return 1 on setup failure; otherwise save its fingerprint and return start_app's status.
 run_setup() { # runs in the background, started by the double-click below
   echo $$ >"$RUN/setup.pid"
   rm -f "$RUN/setup-error"

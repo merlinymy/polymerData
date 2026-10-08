@@ -20,6 +20,7 @@ api=$!
 (cd "$ROOT/frontend" && exec node_modules/.bin/vite --strictPort) &
 web=$!
 
+# Disable the shutdown traps and send SIGTERM to both child PIDs, ignoring kill errors.
 stop() {
   trap - INT TERM EXIT
   kill "$api" "$web" 2>/dev/null || true
