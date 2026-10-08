@@ -20,7 +20,7 @@ several temperatures, say), otherwise one. A blank cell means the paper
 doesn't give that value for that data point.
 
 How it works: MinerU turns the PDF into text and figure images (the
-pipeline's parse step, written to output/parsed/<paper id>/), and the model
+pipeline's parse step, written to <DATA_DIR>/parsed/<paper id>/), and the model
 reads both through util/claudeAPIMock.py's ask_llm(), for now Claude via
 Claude Code. A PDF that was parsed before is not parsed again, so only the
 first run of a paper waits for MinerU. Instead of a PDF you can pass a folder
@@ -51,19 +51,28 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TextIO
 
+from dotenv import load_dotenv
+
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parent), str(HERE)]  # repo root for `util`, extraction/ for `pipeline`
 
 from pipeline.paper_id import paper_id_from_path  # noqa: E402
 from pipeline.parsing.figure_links import prompt_anchor, rewrite_to_prompt_anchors  # noqa: E402
 from pipeline.parsing.manifest_schema import ParseManifest  # noqa: E402
-from pipeline.parsing.parse_paper import OUTPUT_ROOT, parse_paper_auto  # noqa: E402
+from pipeline.parsing.parse_paper import parse_paper_auto  # noqa: E402
 from util.claudeAPIMock import ask_llm  # noqa: E402
 
 from job_progress import ASKING, COLLECTING, PARSING  # noqa: E402
 from log_setup import configure_logging  # noqa: E402
 
 log = logging.getLogger("extraction.pipeline")
+
+load_dotenv(HERE / ".env")
+# Where the parsed papers (parsed/) and the server's finished jobs (extractions/) are kept:
+# DATA_DIR from the environment or extraction/.env, relative to the repo root unless
+# absolute. setup.sh asks for it; unset, it's extraction/output/.
+DATA_DIR = HERE.parent / Path(os.environ.get("DATA_DIR") or "extraction/output").expanduser()
+OUTPUT_ROOT = DATA_DIR / "parsed"
 
 # Called with a job_progress step id as each step starts.
 OnStep = Callable[[str], None]
@@ -173,7 +182,7 @@ def extract_features(
 
 
 def parse(pdf: Path, on_step: OnStep | None = None) -> Path:
-    """output/parsed/<paper id>/ for this PDF, running the parse step first if it
+    """OUTPUT_ROOT/<paper id>/ for this PDF, running the parse step first if it
     isn't there yet -- and only then calling on_step(PARSING)."""
     try:
         paper_id = paper_id_from_path(pdf)
@@ -226,7 +235,7 @@ def main() -> None:
     paper, output = args.paper.resolve(), args.output.resolve() if args.output else None
     lines = args.features.read_text(encoding="utf-8").splitlines()
     features = [line.strip() for line in lines if line.strip()]
-    os.chdir(HERE)  # the parse step's paths (settings.yaml, output/parsed/) are relative to extraction/
+    os.chdir(HERE)  # the parse step's settings.yaml path is relative to extraction/
     samples = extract_features(paper, features, model=args.model, send_pdf=args.send_pdf)
     if output is None:
         write_csv(samples, features, sys.stdout)
